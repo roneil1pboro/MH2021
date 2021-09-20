@@ -1,0 +1,187 @@
+
+*****************
+* 02d_risk_4074 *
+*****************
+
+* This do-file calculates health check target numbers by practice, district, lcg and deprivation group
+* Using available data for risk factors
+
+
+use "3 - Cleaned data\practice_base.dta", clear
+
+**************************************************
+* Use the QOF data for latest register numbers for:
+* Obesity and hypertension
+* based on the risk factors covered by the Health Check
+preserve
+use "\\ccc.cambridgeshire.gov.uk\data\CFA Public Health\Public Health Intelligence\PHI Restricted\Care settings\Primary Care\QOF\Prevalence and CIs\2 - Results\QOF_GP_PrevCIs_wide.dta", clear
+* Keep the latest year
+keep if year=="2014/15"
+* Keep just Cambridgeshire located practices
+keep if laname=="Cambridge" | ///
+	laname=="East Cambridgeshire" | ///
+	laname=="Fenland" | ///
+	laname=="Huntingdonshire" | ///
+	laname=="South Cambridgeshire"
+* Keep the variables required
+keep praccode obreg hypertreg
+* Save
+tempfile qofrisk
+save `qofrisk', replace
+restore
+
+* Merge the conditions data with the practice list
+merge 1:1 praccode using `qofrisk'
+drop if _merge==2
+drop _merge
+
+
+***************************************************************
+* Use the QOF-based number of smokers data from the GP Profiles
+preserve
+import excel using "\\ccc.cambridgeshire.gov.uk\data\CFA Public Health\Public Health Intelligence\PHI Restricted\Lifestyles\Smoking\Targets_1617\Options\2 - Raw data\GP_profiles_QOF1415.xlsx", sheet("Practice") cellrange(A4:CD109) clear
+keep A CC
+rename A praccode
+rename CC nosm_best
+tempfile qofnosm
+save `qofnosm', replace
+restore
+
+* Merge the smoking data with the practice list
+merge 1:1 praccode using `qofnosm'
+drop if _merge==2
+drop _merge
+
+
+***********
+* Use number of hospital admissions for alcohol-specific conditions 2014/15 (from analysis done for Joe Keegan)
+preserve
+use "\\ccc.cambridgeshire.gov.uk\data\CFA Public Health\Public Health Intelligence\PHI Restricted\Lifestyles\Alcohol\Admissions 201415\Cleaned data\adm_clean.dta", clear
+* Restrict to over 30s to counter effect of 
+keep if agegp90>7
+keep if agegp90<15
+tab agegp
+* Collapse the data by practice
+collapse (sum) id, by(praccode)
+rename id alcadm
+tempfile alc
+save `alc', replace
+restore
+
+* Merge the alcohol data with the practice list
+merge 1:1 praccode using `alc'
+drop if _merge==2
+drop _merge
+
+
+
+******************************************************************
+* Total health check check target distributed across all practices
+
+* The total target for Health Checks for Cambs will be 18,000
+* Distribute this by practice according to risk factor numbers and the size of the 40-74 population
+* Create a single weight variable for the risk factors and one for the 4074 and apply equally
+
+* Generate variables containing the total numbers on the registers
+egen hyptot=total(hypertreg)
+egen obtot=total(obreg)
+egen nosmtot=total(nosm_best)
+egen alctot=total(alcadm)
+* Generate variables to contain weights according to the proportion of the total in the practice
+gen double hypwt=hypertreg/hyptot
+gen double obwt=obreg/obtot
+gen double nosmwt=nosm_best/nosmtot
+gen double alcwt=alcadm/alctot
+* Combine the 4 equally to obtain a single risk factors weight
+gen double riskwt=(0.25*hypwt)+(0.25*obwt)+(0.25*nosmwt)+(0.25*alcwt)
+
+* Generate a variable containing the total 40-74 population
+egen pop4074tot=total(pop4074)
+* Generate a variable to contain a weight according to the proportion of the total chd number in the practice
+gen double popwt=pop4074/pop4074tot
+
+* Combine the conditions and pop weight variables in an equal 50:50 split
+gen double riskpopwt=(0.5*riskwt)+(0.5*popwt)
+
+* Allocate the total health checks according to the CHD and pop weighting
+gen double risk_targ=18000*riskpopwt
+
+
+
+*******************************************************************************
+* An additional 3,000 health checks will be part of the new lifestyles contract
+* Agreed method with Val
+
+* Distribute according to numbers of CHD deaths - could indicate need for earlier detection
+* and size of 40-74 pop
+* Get the latest 3-yr numbers of CHD deaths by practice for 2012-14 from the CCG mortality work
+* NO UPDATE TO THIS AS AT 19/02/16
+preserve
+use "\\ccc.cambridgeshire.gov.uk\data\CFA Public Health\Public Health Intelligence\PHI Restricted\CCG\Priority CHD\CHD mortality\Results\CHD_DASRs_praccode.dta", clear
+keep if period=="2012-14"
+keep if agetype=="allage"
+keep area deaths
+drop if area=="Total CCG"
+rename area praccode
+tempfile deaths
+save `deaths', replace
+restore
+merge 1:1 praccode using `deaths'
+drop if _merge==2
+drop _merge
+
+* Distribute across most deprived 40% of practices?
+* Generate a variable containing the total number of CHD deaths for the most deprived 20% of practices in Cambs
+egen deathstot=total(deaths) if imd_quint=="1 - Most deprived" | imd_quint=="2"
+* Generate a variable to contain a weight according to the proportion of the total chd deaths in the practice
+gen double deathswt=deaths/deathstot
+
+* Generate a variable containing the total number aged 40-74 for the most deprived 20% of practices in Cambs
+egen pop4074tot_dep=total(pop4074) if imd_quint=="1 - Most deprived" | imd_quint=="2"
+* Generate a variable to contain a weight according to the proportion of the total chd deaths in the practice
+gen double popwt_dep=pop4074/pop4074tot_dep
+
+* Combine the two weight variables in an equal 50:50 split
+gen double deathspopwt=(0.5*deathswt)+(0.5*popwt_dep)
+
+* Allocate the total health checks according to the CHD deaths weighting
+gen double deaths4074_targlife=3000*deathspopwt
+
+
+**********************
+* Final data and exports
+
+* Sort the data by district and practice
+sort laname praccode
+
+* Save the practice level dataset
+capture mkdir "4 - Results"
+save "4 - Results\HC targets_riskfactors_4074_JM_20160309.dta", replace
+
+* Export full practice level data to Excel
+export excel using "4 - Results\HC targets_riskfactors_4074_JM_20160309.xlsx", sheet("Practice") firstrow(var) sheetreplace
+
+* Sum targets for the county
+preserve
+collapse (sum) *targ*, by(countyname)
+export excel using "4 - Results\HC targets_riskfactors_4074_JM_20160309.xlsx", sheet("County") firstrow(var) sheetreplace
+restore
+
+* Sum targets by district
+preserve
+collapse (sum) *targ*, by(laname)
+export excel using "4 - Results\HC targets_riskfactors_4074_JM_20160309.xlsx", sheet("District") firstrow(var) sheetreplace
+restore
+
+* Sum the targets by LCG
+preserve
+collapse (sum) *targ*, by(lcg)
+export excel using "4 - Results\HC targets_riskfactors_4074_JM_20160309.xlsx", sheet("LCG") firstrow(var) sheetreplace
+restore
+
+* Sum targets by deprivation
+preserve
+collapse (sum) *targ*, by(imd_2080)
+export excel using "4 - Results\HC targets_riskfactors_4074_JM_20160309.xlsx", sheet("Deprivation") firstrow(var) sheetreplace
+restore
+

@@ -1,0 +1,148 @@
+Sub CreateDASRs()
+
+'Create worksheet copies for copy/pasting of observed events and populations
+
+    MsgBox "Calculating DASRs - please wait"
+
+    Application.ScreenUpdating = False
+
+   'Pre-empt any issues with overly long names for worksheets or apostrophes causing problems with subsequent code
+    Sheets("Practice Data - Observed Events").Select
+
+    Columns("A:A").Select
+    Selection.Replace What:="CENTRE", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="SURGERY", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="PRACTICE", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="'", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+           
+    'Copy/paste values only for PCN/CCG cals
+   
+    Range("B5:U124").Select
+    Selection.Copy
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks _
+    :=False, Transpose:=False
+         
+    Sheets("Practice Data - Population").Select
+   
+    Columns("A:A").Select
+    Selection.Replace What:="CENTRE", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="SURGERY", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="PRACTICE", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Selection.Replace What:="'", Replacement:="", LookAt:=xlPart, _
+    SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, _
+    ReplaceFormat:=False
+    Range("A1").Select
+   
+     'Copy/paste values only for PCN/CCG and quintile cals
+   
+    Range("B5:U124").Select
+    Selection.Copy
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks _
+    :=False, Transpose:=False
+   
+    Range("A1").Select
+
+
+'Create worksheet copies for copy/pasting of observed events and populations
+
+  Sheets("Practice Data - Observed Events").Select
+    Sheets.Add
+    ActiveSheet.Name = "Observed"
+    Sheets.Add
+    ActiveSheet.Name = "Population"
+    Sheets("Practice Data - Observed Events").Select
+    Cells.Select
+    Selection.Copy
+    Sheets("Observed").Select
+    Cells.Select
+    ActiveSheet.Paste
+    Range("A1").Select
+    Sheets("Practice Data - Population").Select
+    Cells.Select
+    Application.CutCopyMode = False
+    Selection.Copy
+    Sheets("Population").Select
+    Cells.Select
+    ActiveSheet.Paste
+    Range("A1").Select
+   
+    Sheets("Practice Data - Observed Events").Select
+
+    'Create individual copies of template for each included practice
+
+    Dim LR As Long, ID As Range, PRACTICES As Range
+    Application.ScreenUpdating = False
+    LR = Sheets("Practice Data - Observed Events").Range("A" & Rows.Count).End(xlUp).Row
+
+    Set PRACTICES = Sheets("Practice Data - Observed Events").Range("A5:A" & LR)
+
+    For Each ID In PRACTICES
+       
+    Sheets("Template").Copy After:=Sheets(Sheets.Count)
+    ActiveSheet.Name = ID.Value
+       
+    'Smarten worksheet
+       
+    Range("A1").Select
+    Columns("A:A").EntireColumn.AutoFit
+    Range("A1").Select
+               
+    'Add the observed events
+       
+    Sheets("Observed").Select
+    Range("B5:T5").Select
+    Selection.Copy
+    Sheets(Sheets.Count).Select
+    Range("C4:C22").Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks _
+    :=False, Transpose:=True
+    Range("A1").Select
+       
+    'Add the practice population
+       
+    Sheets("Population").Select
+    Range("B5:T5").Select
+    Selection.Copy
+    Sheets(Sheets.Count).Select
+    Range("D4:D22").Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks _
+    :=False, Transpose:=True
+    Range("A1").Select
+
+    'Delete completed observed events
+       
+    Sheets("Observed").Select
+    Rows("5:5").Select
+    Selection.Delete Shift:=xlUp
+    Range("A1").Select
+       
+    'Delete completed practice population data
+       
+    Sheets("Population").Select
+    Rows("5:5").Select
+    Selection.Delete Shift:=xlUp
+    Range("A1").Select
+               
+    Next ID
+
+    'Clean and finish
+
+    Application.ScreenUpdating = True
+
+    MsgBox "DASRs calculated"
+
+    End Sub
