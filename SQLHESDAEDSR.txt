@@ -1,0 +1,47 @@
+
+'Select population denominators from ONS population estimates table in DAE HES
+
+with pop as (SELECT sum(population_count) as population, geographic_subgroup_code, case when FLOOR((age_lower)/5)*5 BETWEEN 90 AND 150 THEN 90 ELSE FLOOR((age_lower)/5)*5 END AS pop_age_band 
+FROM dss_corporate.ons_population_v2 
+where year_of_count IN('2016','2017','2018') and geographic_subgroup_code IN('E06000010','E06000011','E06000012','E06000013','E06000014','E07000163','E07000164',
+'E07000165','E07000166','E07000167','E07000168','E07000169','E08000016','E08000017','E08000018','E08000019','E08000032','E08000033','E08000034','E08000035','E08000036')
+ and gender in('M','F')  AND ons_release_date in ('2018-06-28','2019-06-26','2018-03-23')
+group by geographic_subgroup_code, case when FLOOR((age_lower)/5)*5 BETWEEN 90 AND 150 THEN 90 ELSE FLOOR((age_lower)/5)*5 END),
+
+
+'Select observed events for numerator
+
+counts as (SELECT COUNT(*) as events, resladst_ons, case when FLOOR((startage_calc)/5)*5 BETWEEN 90 AND 150 THEN 90 ELSE FLOOR((startage_calc)/5)*5 ED AS adm_age_band 
+FROM hes_apc_all_1011_1819 
+WHERE FYEAR IN ('1718','1617','1819') 
+AND DIAG_4_CONCAT RLIKE ('X85|X86|X87|X88|X89|X90|X91|X92|X93|X94|X95|X96|X97|X98|X99|Y00|Y01|Y02|Y03|Y04|Y05|Y06|Y07|Y08|Y09|NULL') 
+AND SUBSTR(ADMIMETH,1,1) = '2' 
+AND RESLADST_ONS IN('E06000010','E06000011','E06000012','E06000013','E06000014','E07000163','E07000164',
+'E07000165','E07000166','E07000167','E07000168','E07000169','E08000016','E08000017','E08000018','E08000019','E08000032','E08000033','E08000034','E08000035','E08000036') 
+AND EPIORDER = '1' 
+AND CLASSPAT IN ('1', '2', '5') 
+AND EPISTAT = '3' 
+GROUP BY resladst_ons, case when FLOOR((startage_calc)/5)*5 BETWEEN 90 AND 150 THEN 90 ELSE FLOOR((startage_calc)/5)*5 END ),
+
+
+'Select European Standard Population and calculated into correct age bands for direct age-standardisation
+esp as (select case when (age_lower is null or age_lower = 1) then 0 when age_lower in(90,95) then 90 else age_lower end as esp_age_band, sum(esp) as esp1
+from european_standard_pop_v01
+group by case when (age_lower is null or age_lower = 1) then 0 when age_lower in(90,95) then 90 else age_lower end),
+
+'Joins populations to counts and creates fields needed for DSR calculations
+tempcalc as (select geographic_subgroup_code, pop.pop_age_band, counts.events, pop.population, esp.esp1, esp.esp1/pop.population*events as WiOiOverni 
+,POWER((esp1/population),2)*events as WiOioverni2
+from pop
+left outer join counts on geographic_subgroup_code = resladst_ons and adm_age_band = pop_age_band
+left join esp on pop.pop_age_band = esp_age_band),
+
+
+'Sums fields required for calculating confidence intervals and calculates DSRs
+DSRcalc as (select geographic_subgroup_code, sum(events) as totalcount, sum(population) as totalpop, sum(esp1) as totalesp, (sum(WiOiOverni)/sum(esp1))*100000 as DSR,
+sum(WiOioverni2) as WiOioverni2X, sum(WiOiOverni) as WiOiOverniX from tempcalc group by geographic_subgroup_code)
+
+
+select geographic_subgroup_code, totalcount, totalpop, DSR, ((DSR/100000)+SQRT(((1/POWER(totalesp,2))*WiOioverni2X)/totalcount)*((totalcount*POWER((1-(1/(9*totalcount))-(1.95996398454005/3/SQRT(totalcount))),3))-totalcount))*100000 as LCI,
+((DSR/100000)+SQRT(((1/POWER(totalesp,2))*WiOioverni2X)/totalcount)*(((totalcount+1)*POWER((1-(1/(9*(totalcount+1)))+(1.95996398454005/3/SQRT((totalcount+1)))),3))-totalcount))*100000 as UCI
+from DSRcalc
